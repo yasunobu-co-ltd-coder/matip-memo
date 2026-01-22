@@ -33,6 +33,7 @@ export default function Page() {
   // Config
   const [me, setMe] = useState<string>('');
   const [users, setUsers] = useState<string[]>(DEFAULT_USERS);
+  const [deleteMode, setDeleteMode] = useState(false);
 
   // Data
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -174,20 +175,7 @@ export default function Page() {
       alert('最低1人のユーザーが必要です');
       return;
     }
-
-    // Create a selection prompt with user list
-    const userList = users.map((u, i) => `${i + 1}. ${u}`).join('\n');
-    const selection = prompt(`削除するユーザーの番号を入力してください:\n\n${userList}`);
-
-    if (!selection) return;
-    const index = parseInt(selection) - 1;
-
-    if (isNaN(index) || index < 0 || index >= users.length) {
-      alert('無効な番号です');
-      return;
-    }
-
-    removeUser(users[index]);
+    setDeleteMode(!deleteMode);
   };
 
   // Submit new deal
@@ -346,28 +334,39 @@ export default function Page() {
           <p style={{ textAlign: 'center', color: '#64748b', marginBottom: '32px' }}>担当者を選択して開始</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             {users.map(u => (
-              <button
-                key={u}
-                className="glass-panel"
-                style={{ width: '100%', padding: '16px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: '#334155' }}
-                onClick={() => handleLogin(u)}
-              >
-                {u}
-              </button>
+              <div key={u} style={{ position: 'relative' }}>
+                <button
+                  className="glass-panel"
+                  style={{ width: '100%', padding: '16px', borderRadius: '12px', border: deleteMode ? '2px solid #ef4444' : 'none', cursor: 'pointer', fontWeight: 'bold', color: '#334155' }}
+                  onClick={() => deleteMode ? removeUser(u) : handleLogin(u)}
+                >
+                  {u}
+                </button>
+                {deleteMode && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); removeUser(u); }}
+                    style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '28px', height: '28px', fontSize: '16px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
             ))}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <button
-              onClick={addUser}
-              style={{ width: '100%', background: '#3b82f6', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
-            >
-              + 新規ユーザー追加
-            </button>
+            {!deleteMode && (
+              <button
+                onClick={addUser}
+                style={{ width: '100%', background: '#3b82f6', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+              >
+                + 新規ユーザー追加
+              </button>
+            )}
             <button
               onClick={handleDeleteUser}
-              style={{ width: '100%', background: '#ef4444', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+              style={{ width: '100%', background: deleteMode ? '#64748b' : '#ef4444', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
             >
-              ユーザーを削除
+              {deleteMode ? 'キャンセル' : 'ユーザーを削除'}
             </button>
           </div>
         </div>

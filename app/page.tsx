@@ -144,7 +144,7 @@ export default function Page() {
     localStorage.setItem('matip_users', JSON.stringify(updatedUsers));
   };
 
-  // Remove user
+  // Remove user with task check
   const removeUser = (name: string) => {
     if (users.length <= 1) {
       alert('最低1人のユーザーが必要です');
@@ -154,10 +154,40 @@ export default function Page() {
       alert('現在ログイン中のユーザーは削除できません');
       return;
     }
+
+    // Check if user has assigned tasks
+    const userTasks = deals.filter(d => d.assignee === name && d.status === 'open');
+    if (userTasks.length > 0) {
+      alert(`「${name}」には${userTasks.length}件の担当タスクがあるため削除できません。\nタスクを完了するか、他のユーザーに割り当ててから削除してください。`);
+      return;
+    }
+
     if (!confirm(`「${name}」を削除しますか？`)) return;
     const updatedUsers = users.filter(u => u !== name);
     setUsers(updatedUsers);
     localStorage.setItem('matip_users', JSON.stringify(updatedUsers));
+  };
+
+  // Handle delete user flow
+  const handleDeleteUser = () => {
+    if (users.length <= 1) {
+      alert('最低1人のユーザーが必要です');
+      return;
+    }
+
+    // Create a selection prompt with user list
+    const userList = users.map((u, i) => `${i + 1}. ${u}`).join('\n');
+    const selection = prompt(`削除するユーザーの番号を入力してください:\n\n${userList}`);
+
+    if (!selection) return;
+    const index = parseInt(selection) - 1;
+
+    if (isNaN(index) || index < 0 || index >= users.length) {
+      alert('無効な番号です');
+      return;
+    }
+
+    removeUser(users[index]);
   };
 
   // Submit new deal
@@ -316,30 +346,30 @@ export default function Page() {
           <p style={{ textAlign: 'center', color: '#64748b', marginBottom: '32px' }}>担当者を選択して開始</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             {users.map(u => (
-              <div key={u} style={{ position: 'relative' }}>
-                <button
-                  className="glass-panel"
-                  style={{ width: '100%', padding: '16px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: '#334155' }}
-                  onClick={() => handleLogin(u)}
-                >
-                  {u}
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); removeUser(u); }}
-                  style={{ position: 'absolute', top: '4px', right: '4px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '24px', height: '24px', fontSize: '12px', cursor: 'pointer', fontWeight: 'bold' }}
-                  title="このユーザーを削除"
-                >
-                  ×
-                </button>
-              </div>
+              <button
+                key={u}
+                className="glass-panel"
+                style={{ width: '100%', padding: '16px', borderRadius: '12px', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: '#334155' }}
+                onClick={() => handleLogin(u)}
+              >
+                {u}
+              </button>
             ))}
           </div>
-          <button
-            onClick={addUser}
-            style={{ width: '100%', background: '#3b82f6', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
-          >
-            + 新規ユーザー追加
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={addUser}
+              style={{ flex: 1, background: '#3b82f6', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+            >
+              + 新規ユーザー追加
+            </button>
+            <button
+              onClick={handleDeleteUser}
+              style={{ flex: 1, background: '#ef4444', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+            >
+              ユーザーを削除
+            </button>
+          </div>
         </div>
       </div>
     );

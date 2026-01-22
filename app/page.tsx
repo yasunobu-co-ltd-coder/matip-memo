@@ -155,10 +155,10 @@ export default function Page() {
       return;
     }
 
-    // Check if user has assigned tasks
-    const userTasks = deals.filter(d => d.assignee === name && d.status === 'open');
+    // Check if user has assigned tasks (any status in DB)
+    const userTasks = deals.filter(d => d.assignee === name);
     if (userTasks.length > 0) {
-      alert(`「${name}」には${userTasks.length}件の担当タスクがあるため削除できません。\nタスクを完了するか、他のユーザーに割り当ててから削除してください。`);
+      alert(`「${name}」には${userTasks.length}件の担当タスクがDBに存在するため削除できません。\nすべてのタスクを削除してから再度お試しください。`);
       return;
     }
 
@@ -356,16 +356,16 @@ export default function Page() {
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <button
               onClick={addUser}
-              style={{ flex: 1, background: '#3b82f6', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+              style={{ width: '100%', background: '#3b82f6', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
             >
               + 新規ユーザー追加
             </button>
             <button
               onClick={handleDeleteUser}
-              style={{ flex: 1, background: '#ef4444', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+              style={{ width: '100%', background: '#ef4444', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
             >
               ユーザーを削除
             </button>

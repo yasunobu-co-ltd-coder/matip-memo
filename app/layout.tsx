@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     title: "matip",
   },
   icons: {
-    icon: "/favicon.ico",
+    icon: "/icon-192.png",
     apple: "/icon-192.png",
   }
 };

@@ -92,6 +92,8 @@ export default function Page() {
   }, [isPinVerified]);
 
   // Load user from localStorage
+  // Load user from localStorage
+  /* 自動ログインを無効化 (毎回担当者を選択させるため)
   useEffect(() => {
     if (!isPinVerified) return;
     const savedMe = localStorage.getItem('matip_me');
@@ -100,6 +102,7 @@ export default function Page() {
       setAssignee(savedMe);
     }
   }, [isPinVerified]);
+  */
 
   // Load deals from Supabase
   const loadDeals = useCallback(async () => {
@@ -471,7 +474,7 @@ export default function Page() {
     <div className="wrap">
       {/* Header */}
       <header className="topbar">
-        <div className="brand">matip</div>
+        <div className="brand">matip <span style={{ fontSize: '10px', opacity: 0.7 }}>v1.1</span></div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <span className="user-badge" onClick={logout}>{me}</span>
         </div>

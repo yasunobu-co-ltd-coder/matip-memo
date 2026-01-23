@@ -85,7 +85,7 @@ export default function Page() {
     if (savedUsers) {
       try {
         setUsers(JSON.parse(savedUsers));
-      } catch (e) {
+      } catch {
         setUsers(DEFAULT_USERS);
       }
     }

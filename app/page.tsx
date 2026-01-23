@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Deal, Tri, AssignmentType, getDeals, createDeal, updateDeal, deleteDeal } from '../lib/deals';
 
 const DEFAULT_USERS = ['host', '赤城', 'user_1', 'user_2'];
@@ -63,6 +63,12 @@ export default function Page() {
   const [editImportance, setEditImportance] = useState<Tri>('中');
   const [editProfit, setEditProfit] = useState<Tri>('中');
   const [editUrgency, setEditUrgency] = useState<Tri>('中');
+
+  // Voice Input
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
 
   // Check PIN from sessionStorage on mount
   useEffect(() => {
@@ -260,6 +266,83 @@ export default function Page() {
     setEditingDeal(null);
   };
 
+  // Voice Recording Handler
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      chunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
+        await sendAudioToApi(blob);
+        stream.getTracks().forEach(track => track.stop()); // Stop mic
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Mic error:', err);
+      alert('マイクへのアクセスが許可されていません');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  };
+
+  const sendAudioToApi = async (blob: Blob) => {
+    setIsProcessingVoice(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', blob);
+
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error('API Error');
+
+      const data = await res.json();
+      const { result } = data;
+
+      if (result) {
+        if (result.clientName) setClientName(result.clientName);
+        if (result.memo) setMemo(result.memo);
+        if (result.dueDate) setDueDate(result.dueDate);
+        if (result.importance) setImportance(result.importance);
+        if (result.urgency) setUrgency(result.urgency);
+        if (result.profit) setProfit(result.profit);
+
+        if (result.assignmentType) {
+          setAssignmentType(result.assignmentType);
+          if (result.assignmentType === '任せる' && result.assignee) {
+            // ユーザーリストに近い名前があれば選択する簡易ロジック
+            const found = users.find(u => u.includes(result.assignee) || result.assignee.includes(u));
+            if (found) setAssignee(found);
+          }
+        }
+      }
+
+    } catch (e) {
+      console.error(e);
+      alert('音声解析に失敗しました');
+    } finally {
+      setIsProcessingVoice(false);
+    }
+  };
+
   // Cancel edit
   const cancelEdit = () => {
     setEditingDeal(null);
@@ -401,6 +484,25 @@ export default function Page() {
         {tab === 'new' && (
           <div className="card">
             <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>新規案件登録</h2>
+
+            {/* Voice Input Button */}
+            <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={isProcessingVoice}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '12px 24px', borderRadius: '99px',
+                  background: isRecording ? '#ef4444' : (isProcessingVoice ? '#94a3b8' : '#3b82f6'),
+                  color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <span style={{ fontSize: '20px' }}>{isRecording ? '⏹️' : '🎙️'}</span>
+                {isProcessingVoice ? '解析中...' : (isRecording ? '録音停止 & 解析' : '音声で入力する')}
+              </button>
+            </div>
 
             <div className="form-group">
               <label className="input-label">誰からの案件？ (会社名/担当者)</label>

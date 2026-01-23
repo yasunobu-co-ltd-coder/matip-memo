@@ -2,8 +2,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Deal, Tri, AssignmentType, getDeals, createDeal, updateDeal, deleteDeal } from '../lib/deals';
-
-const DEFAULT_USERS = ['host', '赤城', 'user_1', 'user_2'];
+import { User, getUsers, addUser as addUserToDb, deleteUser as deleteUserFromDb } from '../lib/users';
 
 const TRI_SCORE: Record<Tri, number> = { 高: 3, 中: 2, 低: 1 };
 
@@ -381,7 +380,10 @@ export default function Page() {
     return (
       <div className="login-screen">
         <div className="login-card">
-          <h1 className="brand" style={{ textAlign: 'center', fontSize: '24px', marginBottom: '8px' }}>matip</h1>
+          <h1 className="brand" style={{ textAlign: 'center', fontSize: '24px', marginBottom: '8px' }}>
+            matip
+            <span style={{ fontSize: '12px', opacity: 0.8, marginLeft: '6px', fontWeight: 'normal' }}>v1.1</span>
+          </h1>
           <p style={{ textAlign: 'center', color: '#64748b', marginBottom: '32px' }}>PINコードを入力してください</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
             <input
@@ -416,7 +418,10 @@ export default function Page() {
     return (
       <div className="login-screen">
         <div className="login-card">
-          <h1 className="brand" style={{ textAlign: 'center', fontSize: '24px', marginBottom: '8px' }}>matip</h1>
+          <h1 className="brand" style={{ textAlign: 'center', fontSize: '24px', marginBottom: '8px' }}>
+            matip
+            <span style={{ fontSize: '12px', opacity: 0.8, marginLeft: '6px', fontWeight: 'normal' }}>v1.1</span>
+          </h1>
           <p style={{ textAlign: 'center', color: '#64748b', marginBottom: '32px' }}>担当者を選択して開始</p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             {users.map(u => (
@@ -474,7 +479,10 @@ export default function Page() {
     <div className="wrap">
       {/* Header */}
       <header className="topbar">
-        <div className="brand">matip <span style={{ fontSize: '10px', opacity: 0.7 }}>v1.1</span></div>
+        <div className="brand">
+          matip
+          <span style={{ fontSize: '11px', opacity: 0.8, marginLeft: '6px', fontWeight: 'normal' }}>v1.1</span>
+        </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <span className="user-badge" onClick={logout}>{me}</span>
         </div>

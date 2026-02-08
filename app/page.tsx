@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { Deal, Tri, AssignmentType, getDeals, createDeal, updateDeal, deleteDeal } from '../lib/deals';
 import { User, getUsers, addUser, deleteUser } from '../lib/users';
 
+const TRI_SCORE: Record<Tri, number> = { 高: 3, 中: 2, 低: 1 };
+
 // PIN認証コード
 const VALID_PIN = '8004';
 
@@ -30,36 +32,50 @@ export default function Page() {
   // Config
   const [me, setMe] = useState<string>('');
   const [users, setUsers] = useState<User[]>([]);
-  const [isEditingUsers, setIsEditingUsers] = useState(false);
+  const [deleteMode, setDeleteMode] = useState(false);
   const [newUserName, setNewUserName] = useState('');
 
   // Data
   const [deals, setDeals] = useState<Deal[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<'list' | 'new' | 'done'>('list');
 
-  // View State
-  const [view, setView] = useState<'home' | 'list'>('home');
-  const [modal, setModal] = useState<'none' | 'minutes' | 'photo'>('none');
+  // Filters
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<'全件' | '自分担当' | '任せる' | '自分で' | '期限切れ'>('自分担当');
+  const [sortBy, setSortBy] = useState<'期限が近い順' | '重要度' | '急ぎ度' | '利益度' | '新しい順' | '古い順'>('期限が近い順');
 
-  // Form State
+  // Form
   const [clientName, setClientName] = useState('');
   const [memo, setMemo] = useState('');
   const [dueDate, setDueDate] = useState(todayYmd());
-  const [imageUrl, setImageUrl] = useState(''); // For preview and saving
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [importance, setImportance] = useState<Tri>('中');
+  const [profit, setProfit] = useState<Tri>('中');
+  const [urgency, setUrgency] = useState<Tri>('中');
+  const [assignmentType, setAssignmentType] = useState<AssignmentType>('任せる');
+  const [assignee, setAssignee] = useState<string>('');
 
-  // Voice Input Refs
+  // Edit mode
+  const [editingDeal, setEditingDeal] = useState<Deal | null>(null);
+  const [editClientName, setEditClientName] = useState('');
+  const [editMemo, setEditMemo] = useState('');
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editImportance, setEditImportance] = useState<Tri>('中');
+  const [editProfit, setEditProfit] = useState<Tri>('中');
+  const [editUrgency, setEditUrgency] = useState<Tri>('中');
+
+  // Voice Input
   const [isRecording, setIsRecording] = useState(false);
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
-  // Camera Input Ref
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Check PIN
+  // Check PIN from sessionStorage on mount
   useEffect(() => {
     const verified = sessionStorage.getItem('matip_pin_verified');
-    if (verified === 'true') setIsPinVerified(true);
+    if (verified === 'true') {
+      setIsPinVerified(true);
+    }
   }, []);
 
   // Load users from Supabase
@@ -72,7 +88,7 @@ export default function Page() {
     if (isPinVerified) loadUsers();
   }, [isPinVerified, loadUsers]);
 
-  // Load deals
+  // Load deals from Supabase
   const loadDeals = useCallback(async () => {
     if (!isPinVerified || !me) return;
     setLoading(true);
@@ -85,28 +101,37 @@ export default function Page() {
     loadDeals();
   }, [loadDeals]);
 
-  // Handlers
+  // PIN verification handler
   const handlePinSubmit = () => {
     if (pin === VALID_PIN) {
       setIsPinVerified(true);
       sessionStorage.setItem('matip_pin_verified', 'true');
+      setPinError('');
     } else {
       setPinError('PINコードが正しくありません');
     }
   };
 
+  // Login handler
   const handleLogin = (name: string) => {
     setMe(name);
+    localStorage.setItem('matip_me', name);
+    setAssignee(name);
   };
 
   const logout = () => {
     setMe('');
-    setView('home');
+    localStorage.removeItem('matip_me');
   };
 
+  // Add user to Supabase
   const handleAddUser = async () => {
     const trimmed = newUserName.trim();
     if (!trimmed) return;
+    if (users.some(u => u.name === trimmed)) {
+      alert('このユーザーは既に存在します');
+      return;
+    }
     const created = await addUser(trimmed);
     if (created) {
       setUsers([...users, created]);
@@ -116,7 +141,24 @@ export default function Page() {
     }
   };
 
-  const handleDeleteUser = async (user: User) => {
+  // Remove user from Supabase with task check
+  const removeUser = async (user: User) => {
+    if (users.length <= 1) {
+      alert('最低1人のユーザーが必要です');
+      return;
+    }
+    if (user.name === me) {
+      alert('現在ログイン中のユーザーは削除できません');
+      return;
+    }
+
+    // Check if user has assigned tasks (any status in DB)
+    const userTasks = deals.filter(d => d.assignee === user.name);
+    if (userTasks.length > 0) {
+      alert(`「${user.name}」には${userTasks.length}件の担当タスクがDBに存在するため削除できません。\nすべてのタスクを削除してから再度お試しください。`);
+      return;
+    }
+
     if (!confirm(`「${user.name}」を削除しますか？`)) return;
     const ok = await deleteUser(user.id);
     if (ok) {
@@ -126,15 +168,98 @@ export default function Page() {
     }
   };
 
-  const resetForm = () => {
+  // Handle delete user flow
+  const handleDeleteUser = () => {
+    if (users.length <= 1) {
+      alert('最低1人のユーザーが必要です');
+      return;
+    }
+    setDeleteMode(!deleteMode);
+  };
+
+  // Submit new deal
+  const submit = async () => {
+    if (!me) return;
+    const newDeal = {
+      created_by: me,
+      client_name: clientName.trim(),
+      memo: memo.trim(),
+      due_date: dueDate,
+      importance,
+      profit,
+      urgency,
+      assignment_type: assignmentType,
+      assignee: assignmentType === '自分で' ? me : assignee,
+      status: 'open' as const,
+    };
+
+    const created = await createDeal(newDeal);
+    if (created) {
+      setDeals([created, ...deals]);
+    }
+
+    // Reset & Nav
     setClientName('');
     setMemo('');
     setDueDate(todayYmd());
-    setImageUrl('');
-    setModal('none');
+    setImportance('中');
+    setTab('list');
   };
 
-  // --- Voice Logic ---
+  // Mark as done
+  const markDone = async (id: string) => {
+    const updated = await updateDeal(id, { status: 'done' });
+    if (updated) {
+      setDeals(deals.map(d => d.id === id ? updated : d));
+    }
+  };
+
+  // Restore
+  const restore = async (id: string) => {
+    const updated = await updateDeal(id, { status: 'open' });
+    if (updated) {
+      setDeals(deals.map(d => d.id === id ? updated : d));
+    }
+  };
+
+  // Delete deal permanently
+  const handleDelete = async (id: string) => {
+    if (!confirm('この案件を完全に削除しますか？')) return;
+    const success = await deleteDeal(id);
+    if (success) {
+      setDeals(deals.filter(d => d.id !== id));
+    }
+  };
+
+  // Start editing
+  const startEdit = (deal: Deal) => {
+    setEditingDeal(deal);
+    setEditClientName(deal.client_name);
+    setEditMemo(deal.memo);
+    setEditDueDate(deal.due_date);
+    setEditImportance(deal.importance);
+    setEditProfit(deal.profit);
+    setEditUrgency(deal.urgency);
+  };
+
+  // Save edit
+  const saveEdit = async () => {
+    if (!editingDeal) return;
+    const updated = await updateDeal(editingDeal.id, {
+      client_name: editClientName,
+      memo: editMemo,
+      due_date: editDueDate,
+      importance: editImportance,
+      profit: editProfit,
+      urgency: editUrgency,
+    });
+    if (updated) {
+      setDeals(deals.map(d => d.id === editingDeal.id ? updated : d));
+    }
+    setEditingDeal(null);
+  };
+
+  // Voice Recording Handler
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -143,19 +268,22 @@ export default function Page() {
       chunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
       };
 
       mediaRecorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        await processAudio(blob);
-        stream.getTracks().forEach(track => track.stop());
+        await sendAudioToApi(blob);
+        stream.getTracks().forEach(track => track.stop()); // Stop mic
       };
 
       mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
-      alert('マイクを使用できません');
+      console.error('Mic error:', err);
+      alert('マイクへのアクセスが許可されていません');
     }
   };
 
@@ -166,134 +294,134 @@ export default function Page() {
     }
   };
 
-  const processAudio = async (blob: Blob) => {
-    setIsProcessing(true);
+  const sendAudioToApi = async (blob: Blob) => {
+    setIsProcessingVoice(true);
     try {
       const formData = new FormData();
       formData.append('file', blob);
-      const res = await fetch('/api/transcribe', { method: 'POST', body: formData });
+
+      const res = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+
       if (!res.ok) throw new Error('API Error');
+
       const data = await res.json();
       const { result } = data;
 
       if (result) {
-        setClientName(result.clientName || '');
-        setMemo(result.memo || '');
+        if (result.clientName) setClientName(result.clientName);
+        if (result.memo) setMemo(result.memo);
         if (result.dueDate) setDueDate(result.dueDate);
+        if (result.importance) setImportance(result.importance);
+        if (result.urgency) setUrgency(result.urgency);
+        if (result.profit) setProfit(result.profit);
+
+        if (result.assignmentType) {
+          setAssignmentType(result.assignmentType);
+          if (result.assignmentType === '任せる' && result.assignee) {
+            // ユーザーリストに近い名前があれば選択する簡易ロジック
+            const found = users.find(u => u.name.includes(result.assignee) || result.assignee.includes(u.name));
+            if (found) setAssignee(found.name);
+          }
+        }
       }
+
     } catch (e) {
+      console.error(e);
       alert('音声解析に失敗しました');
     } finally {
-      setIsProcessing(false);
+      setIsProcessingVoice(false);
     }
   };
 
-  // --- Photo Logic ---
-  const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setModal('photo');
-    setIsProcessing(true);
-
-    // Preview
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setImageUrl(ev.target?.result as string);
-      // AI解析は不要のため、プレビューのみセットして処理終了
-      setIsProcessing(false);
-    };
-    reader.readAsDataURL(file);
+  // Cancel edit
+  const cancelEdit = () => {
+    setEditingDeal(null);
   };
 
-  const triggerCamera = () => {
-    fileInputRef.current?.click();
-  };
+  // Filter Logic
+  const filtered = useMemo(() => {
+    const now = todayYmd();
+    let list = deals.filter(d => tab === 'done' ? d.status === 'done' : d.status === 'open');
 
-  // --- Submission ---
-  const saveRecord = async () => {
-    if (!clientName && !memo) return;
-
-    // 省略されたフィールドはデフォルト値を使用
-    const newDeal = {
-      created_by: me,
-      client_name: clientName,
-      memo: memo,
-      due_date: dueDate,
-      importance: '中' as Tri,
-      profit: '中' as Tri,
-      urgency: '中' as Tri,
-      assignment_type: '自分で' as AssignmentType,
-      assignee: me,
-      status: 'open' as const,
-      image_url: imageUrl || undefined,
-    };
-
-    const created = await createDeal(newDeal);
-    if (created) {
-      setDeals([created, ...deals]);
-      resetForm();
-      setView('list'); // 保存後はリストへ
-    } else {
-      alert('保存に失敗しました');
+    if (query) {
+      list = list.filter(d => (d.client_name || '').includes(query) || (d.memo || '').includes(query));
     }
-  };
 
-  // --- Render ---
+    if (filter === '自分担当' && me) list = list.filter(d => d.assignee === me);
+    if (filter === '任せる') list = list.filter(d => d.assignment_type === '任せる');
+    if (filter === '自分で') list = list.filter(d => d.assignment_type === '自分で');
+    if (filter === '期限切れ') list = list.filter(d => d.due_date < now);
 
-  // 1. PIN Screen
+    const sorters: Record<typeof sortBy, (a: Deal, b: Deal) => number> = {
+      '期限が近い順': (a, b) => a.due_date.localeCompare(b.due_date),
+      重要度: (a, b) => TRI_SCORE[b.importance] - TRI_SCORE[a.importance],
+      急ぎ度: (a, b) => TRI_SCORE[b.urgency] - TRI_SCORE[a.urgency],
+      '利益度': (a, b) => TRI_SCORE[b.profit] - TRI_SCORE[a.profit],
+      新しい順: (a, b) => b.created_at.localeCompare(a.created_at),
+      古い順: (a, b) => a.created_at.localeCompare(b.created_at),
+    };
+    return [...list].sort(sorters[sortBy]);
+  }, [deals, tab, query, filter, sortBy, me]);
+
+  // === PIN Screen ===
   if (!isPinVerified) {
     return (
       <div className="login-screen">
         <div className="login-card">
-          <h1 className="brand">matip</h1>
-          <p style={{ textAlign: 'center', marginBottom: 20, color: '#666' }}>PINコードを入力</p>
-          <input
-            type="password"
-            className="input-field"
-            style={{ textAlign: 'center', fontSize: 24, letterSpacing: 4 }}
-            maxLength={4}
-            value={pin}
-            onChange={e => setPin(e.target.value)}
-          />
-          <button className="primary-btn" onClick={handlePinSubmit} style={{ marginTop: 20 }}>確認</button>
-          {pinError && <p style={{ color: 'red', textAlign: 'center', marginTop: 10 }}>{pinError}</p>}
+          <h1 className="brand" style={{ textAlign: 'center', fontSize: '24px', marginBottom: '8px' }}>matip</h1>
+          <p style={{ textAlign: 'center', color: '#64748b', marginBottom: '32px' }}>PINコードを入力してください</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', alignItems: 'center' }}>
+            <input
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              className="input-field"
+              style={{ textAlign: 'center', fontSize: '24px', letterSpacing: '8px', width: '150px' }}
+              placeholder="____"
+              value={pin}
+              onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+              onKeyDown={e => { if (e.key === 'Enter') handlePinSubmit(); }}
+            />
+            {pinError && <p style={{ color: '#ef4444', fontSize: '14px' }}>{pinError}</p>}
+            <button
+              className="primary-btn"
+              style={{ width: '150px' }}
+              onClick={handlePinSubmit}
+              disabled={pin.length !== 4}
+            >
+              確認
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // 2. User Select
+  // === Login View ===
   if (!me) {
     return (
       <div className="login-screen">
         <div className="login-card">
-          <h1 className="brand">matip</h1>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <p style={{ margin: 0 }}>担当者を選択</p>
-            <button
-              onClick={() => setIsEditingUsers(!isEditingUsers)}
-              style={{ background: 'none', border: 'none', color: '#3b82f6', fontWeight: 'bold', fontSize: 14, cursor: 'pointer' }}
-            >
-              {isEditingUsers ? '完了' : '編集'}
-            </button>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <h1 className="brand" style={{ textAlign: 'center', fontSize: '24px', marginBottom: '8px' }}>matip</h1>
+          <p style={{ textAlign: 'center', color: '#64748b', marginBottom: '32px' }}>担当者を選択して開始</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
             {users.map(u => (
               <div key={u.id} style={{ position: 'relative' }}>
-                <button className="glass-panel" onClick={() => !isEditingUsers && handleLogin(u.name)} style={{ padding: 20, fontWeight: 'bold', width: '100%' }}>
+                <button
+                  className="glass-panel"
+                  style={{ width: '100%', padding: '16px', borderRadius: '12px', border: deleteMode ? '2px solid #ef4444' : 'none', cursor: 'pointer', fontWeight: 'bold', color: '#334155' }}
+                  onClick={() => deleteMode ? removeUser(u) : handleLogin(u.name)}
+                >
                   {u.name}
                 </button>
-                {isEditingUsers && (
+                {deleteMode && (
                   <button
-                    onClick={() => handleDeleteUser(u)}
-                    style={{
-                      position: 'absolute', top: -8, right: -8,
-                      width: 24, height: 24, borderRadius: '50%',
-                      background: '#ef4444', color: 'white', border: 'none',
-                      fontSize: 14, fontWeight: 'bold', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}
+                    onClick={(e) => { e.stopPropagation(); removeUser(u); }}
+                    style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '50%', width: '28px', height: '28px', fontSize: '16px', cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
                   >
                     ×
                   </button>
@@ -301,195 +429,367 @@ export default function Page() {
               </div>
             ))}
           </div>
-          {isEditingUsers && (
-            <div style={{ marginTop: 16, display: 'flex', gap: 8 }}>
-              <input
-                className="input-field"
-                value={newUserName}
-                onChange={e => setNewUserName(e.target.value)}
-                placeholder="新しいユーザー名"
-                style={{ flex: 1, margin: 0 }}
-                onKeyDown={e => e.key === 'Enter' && handleAddUser()}
-              />
-              <button
-                onClick={handleAddUser}
-                style={{ padding: '10px 16px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: 12, fontWeight: 'bold', cursor: 'pointer', whiteSpace: 'nowrap' }}
-              >
-                追加
-              </button>
-            </div>
-          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {!deleteMode && (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  className="input-field"
+                  value={newUserName}
+                  onChange={e => setNewUserName(e.target.value)}
+                  placeholder="新しいユーザー名"
+                  style={{ flex: 1, margin: 0 }}
+                  onKeyDown={e => e.key === 'Enter' && handleAddUser()}
+                />
+                <button
+                  onClick={handleAddUser}
+                  style={{ padding: '10px 16px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  追加
+                </button>
+              </div>
+            )}
+            <button
+              onClick={handleDeleteUser}
+              style={{ width: '100%', background: deleteMode ? '#64748b' : '#ef4444', color: '#fff', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+            >
+              {deleteMode ? 'キャンセル' : 'ユーザーを削除'}
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  // 3. Main App
+  // === Loading ===
+  if (loading) {
+    return (
+      <div className="login-screen">
+        <div style={{ textAlign: 'center', color: '#64748b' }}>読み込み中...</div>
+      </div>
+    );
+  }
+
+  // === Main App View ===
   return (
-    <div className="wrap" style={{ background: '#f8fafc', minHeight: '100vh' }}>
+    <div className="wrap">
       {/* Header */}
       <header className="topbar">
-        <div className="brand">matip <span style={{ fontSize: 10, opacity: 0.7 }}>pocket</span></div>
-        <div onClick={logout} style={{ fontSize: 12, fontWeight: 'bold' }}>{me}</div>
+        <div className="brand">matip <span style={{ fontSize: '10px', opacity: 0.7 }}>v1.1</span></div>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <span className="user-badge" onClick={logout}>{me}</span>
+        </div>
       </header>
 
-      {/* Hidden File Input */}
-      <input
-        type="file"
-        accept="image/*"
-        capture="environment"
-        ref={fileInputRef}
-        style={{ display: 'none' }}
-        onChange={handlePhotoSelect}
-      />
-
+      {/* Content Area */}
       <div className="content">
 
-        {/* VIEW: HOME */}
-        {view === 'home' && modal === 'none' && (
-          <div style={{ paddingTop: 20 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 20, color: '#334155' }}>作業を選択</h2>
+        {/* NEW CASE FORM */}
+        {tab === 'new' && (
+          <div className="card">
+            <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>新規案件登録</h2>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              {/* Card 1: Minutes */}
+            {/* Voice Input Button */}
+            <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
               <button
-                className="action-card"
-                onClick={() => setModal('minutes')}
+                onClick={isRecording ? stopRecording : startRecording}
+                disabled={isProcessingVoice}
                 style={{
-                  background: 'white', border: 'none', borderRadius: 20, padding: 24,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
-                  cursor: 'pointer'
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '12px 24px', borderRadius: '99px',
+                  background: isRecording ? '#ef4444' : (isProcessingVoice ? '#94a3b8' : '#3b82f6'),
+                  color: '#fff', border: 'none', fontWeight: 'bold', cursor: 'pointer',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                  transition: 'all 0.2s'
                 }}
               >
-                <div style={{ fontSize: 40 }}>🎙️</div>
-                <div style={{ fontWeight: 'bold', color: '#334155' }}>議事録を作成</div>
-              </button>
-
-              {/* Card 2: Photo */}
-              <button
-                className="action-card"
-                onClick={triggerCamera}
-                style={{
-                  background: 'white', border: 'none', borderRadius: 20, padding: 24,
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.05)',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
-                  cursor: 'pointer'
-                }}
-              >
-                <div style={{ fontSize: 40 }}>📷</div>
-                <div style={{ fontWeight: 'bold', color: '#334155' }}>写真を保存</div>
+                <span style={{ fontSize: '20px' }}>{isRecording ? '⏹️' : '🎙️'}</span>
+                {isProcessingVoice ? '解析中...' : (isRecording ? '録音停止 & 解析' : '音声で入力する')}
               </button>
             </div>
 
-            <div style={{ marginTop: 40 }}>
-              <button
-                onClick={() => setView('list')}
-                style={{ width: '100%', padding: 16, background: '#e2e8f0', border: 'none', borderRadius: 12, fontWeight: 'bold', color: '#475569' }}
-              >
-                履歴一覧を見る
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* VIEW: LIST */}
-        {view === 'list' && modal === 'none' && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 'bold' }}>履歴一覧</h2>
-              <button onClick={() => setView('home')} style={{ background: 'none', border: 'none', color: '#3b82f6', fontWeight: 'bold' }}>ホームへ</button>
+            <div className="form-group">
+              <label className="input-label">誰からの案件？ (会社名/担当者)</label>
+              <input
+                className="input-field"
+                placeholder="例: A社 山田さん"
+                value={clientName}
+                onChange={e => setClientName(e.target.value)}
+              />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {loading ? <p>読み込み中...</p> : deals.map(d => (
-                <div key={d.id} style={{ background: 'white', padding: 12, borderRadius: 12, boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', gap: 12 }}>
-                  {/* Thumbnail */}
-                  <div style={{ width: 60, height: 60, background: '#f1f5f9', borderRadius: 8, flexShrink: 0, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {d.image_url ? (
-                      <img src={d.image_url} alt="thumb" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <span style={{ fontSize: 24 }}>📝</span>
-                    )}
-                  </div>
-
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <div style={{ fontWeight: 'bold', fontSize: 14 }}>{d.client_name || '名称なし'}</div>
-                      <div style={{ fontSize: 12, color: '#94a3b8' }}>{fmtDate(d.created_at.split('T')[0])}</div>
-                    </div>
-                    <div style={{ fontSize: 13, color: '#64748b', marginTop: 4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {d.memo}
-                    </div>
-                  </div>
-                </div>
-              ))}
+            <div className="form-group">
+              <label className="input-label">内容 (メモ)</label>
+              <textarea
+                className="input-field"
+                rows={4}
+                placeholder="要件を入力..."
+                value={memo}
+                onChange={e => setMemo(e.target.value)}
+              />
             </div>
-          </div>
-        )}
 
-        {/* MODAL: MINUTES / PHOTO RESULT */}
-        {modal !== 'none' && (
-          <div style={{ background: 'white', borderRadius: 20, padding: 20, marginTop: 10, boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16 }}>
-              {modal === 'minutes' ? '議事録作成' : '写真記録'}
-            </h2>
+            <div className="form-group">
+              <label className="input-label">期限</label>
+              <input
+                type="date"
+                className="input-field"
+                value={dueDate}
+                onChange={e => setDueDate(e.target.value)}
+              />
+            </div>
 
-            {/* If Minutes: Rec controls */}
-            {modal === 'minutes' && (
-              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+              <div>
+                <label className="input-label">重要度</label>
+                <select className="input-field" value={importance} onChange={e => setImportance(e.target.value as Tri)}>
+                  <option>高</option><option>中</option><option>低</option>
+                </select>
+              </div>
+              <div>
+                <label className="input-label">急ぎ</label>
+                <select className="input-field" value={urgency} onChange={e => setUrgency(e.target.value as Tri)}>
+                  <option>高</option><option>中</option><option>低</option>
+                </select>
+              </div>
+              <div>
+                <label className="input-label">利益度</label>
+                <select className="input-field" value={profit} onChange={e => setProfit(e.target.value as Tri)}>
+                  <option>高</option><option>中</option><option>低</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="input-label">担当</label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                 <button
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isProcessing}
+                  type="button"
+                  className={`glass-panel`}
                   style={{
-                    width: 60, height: 60, borderRadius: '50%',
-                    background: isRecording ? '#ef4444' : '#3b82f6',
-                    color: 'white', border: 'none', fontSize: 24,
-                    boxShadow: '0 4px 10px rgba(0,0,0,0.2)'
+                    padding: '8px 16px', borderRadius: '99px', cursor: 'pointer',
+                    background: assignmentType === '任せる' ? '#e0f2fe' : 'transparent',
+                    color: assignmentType === '任せる' ? '#0284c7' : '#64748b',
+                    borderColor: assignmentType === '任せる' ? '#0284c7' : '#e2e8f0'
                   }}
+                  onClick={() => setAssignmentType('任せる')}
                 >
-                  {isProcessing ? '...' : (isRecording ? '⏹' : '🎙')}
+                  誰かに任せる
+                </button>
+                <button
+                  type="button"
+                  className={`glass-panel`}
+                  style={{
+                    padding: '8px 16px', borderRadius: '99px', cursor: 'pointer',
+                    background: assignmentType === '自分で' ? '#e0f2fe' : 'transparent',
+                    color: assignmentType === '自分で' ? '#0284c7' : '#64748b',
+                    borderColor: assignmentType === '自分で' ? '#0284c7' : '#e2e8f0'
+                  }}
+                  onClick={() => setAssignmentType('自分で')}
+                >
+                  自分でやる
                 </button>
               </div>
-            )}
 
-            {/* Preview Image if exists */}
-            {imageUrl && (
-              <div style={{ marginBottom: 16, borderRadius: 12, overflow: 'hidden', maxHeight: 200 }}>
-                <img src={imageUrl} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </div>
-            )}
+              {assignmentType === '任せる' && (
+                <select className="input-field" value={assignee} onChange={e => setAssignee(e.target.value)}>
+                  {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                </select>
+              )}
+            </div>
 
-            {/* Analysis Loading */}
-            {isProcessing && (
-              <div style={{ textAlign: 'center', padding: 20, color: '#64748b' }}>
-                {modal === 'minutes' ? '音声を解析中...' : '画像を解析中...'}
-              </div>
-            )}
-
-            {/* Result Form */}
-            {!isProcessing && (
-              <>
-                <div className="form-group">
-                  <label className="input-label">相手/件名</label>
-                  <input className="input-field" value={clientName} onChange={e => setClientName(e.target.value)} placeholder="例: A社 定例会議" />
-                </div>
-
-                <div className="form-group">
-                  <label className="input-label">内容</label>
-                  <textarea className="input-field" rows={5} value={memo} onChange={e => setMemo(e.target.value)} placeholder="内容を入力..." />
-                </div>
-
-                <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-                  <button onClick={resetForm} style={{ flex: 1, padding: 14, background: '#f1f5f9', border: 'none', borderRadius: 12, fontWeight: 'bold', color: '#64748b' }}>キャンセル</button>
-                  <button onClick={saveRecord} style={{ flex: 1, padding: 14, background: '#3b82f6', border: 'none', borderRadius: 12, fontWeight: 'bold', color: 'white' }}>保存する</button>
-                </div>
-              </>
-            )}
+            <button className="primary-btn" onClick={submit} disabled={!memo.trim()}>
+              登録する
+            </button>
+            <div style={{ height: '40px' }} />
           </div>
         )}
 
+        {/* LIST VIEW */}
+        {tab !== 'new' && (
+          <>
+            {/* Search Bar */}
+            <div style={{ marginBottom: '12px' }}>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="🔍 検索（会社名・内容）"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                style={{ padding: '10px 14px', fontSize: '14px' }}
+              />
+            </div>
+
+            {/* Filters (Horizontal Scroll) */}
+            <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '12px', marginBottom: '8px', display: 'flex', gap: '8px' }}>
+              {['全件', '自分担当', '任せる', '期限切れ'].map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f as typeof filter)}
+                  style={{
+                    background: filter === f ? (f === '期限切れ' ? '#ef4444' : '#2563eb') : '#fff',
+                    color: filter === f ? '#fff' : (f === '期限切れ' ? '#ef4444' : '#64748b'),
+                    border: filter === f ? 'none' : (f === '期限切れ' ? '1px solid #ef4444' : '1px solid #e2e8f0'),
+                    padding: '6px 14px', borderRadius: '99px', fontSize: '13px', fontWeight: '600', flexShrink: 0
+                  }}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            {/* Sort Dropdown */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px', display: 'block' }}>並び替え</label>
+              <select
+                className="input-field"
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as typeof sortBy)}
+                style={{ padding: '10px 14px', fontSize: '14px' }}
+              >
+                <option value="期限が近い順">期限が近い順</option>
+                <option value="重要度">重要度</option>
+                <option value="急ぎ度">急ぎ度</option>
+                <option value="利益度">利益度</option>
+                <option value="新しい順">新しい順</option>
+                <option value="古い順">古い順</option>
+              </select>
+            </div>
+
+            {filtered.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '60px 0', color: '#94a3b8' }}>
+                案件はありません
+              </div>
+            ) : (
+              filtered.map(d => (
+                <div key={d.id} className="deal-card">
+                  <span className="due-badge" style={{ color: d.due_date < todayYmd() && d.status === 'open' ? '#ef4444' : '#64748b' }}>
+                    期限: {fmtDate(d.due_date)}
+                  </span>
+
+                  <div className="client-name">{d.client_name || '(相手不明)'}</div>
+
+                  <div className="indicators">
+                    <span className={`tag ${d.importance === '高' ? 'tag-hi' : d.importance === '中' ? 'tag-mid' : 'tag-lo'}`}>重要:{d.importance}</span>
+                    <span className={`tag ${d.urgency === '高' ? 'tag-hi' : d.urgency === '中' ? 'tag-mid' : 'tag-lo'}`}>急ぎ:{d.urgency}</span>
+                    <span className={`tag ${d.profit === '高' ? 'tag-hi' : d.profit === '中' ? 'tag-mid' : 'tag-lo'}`}>利益:{d.profit}</span>
+                  </div>
+
+                  <div className="memo-text">{d.memo}</div>
+
+                  <div className="assignee-row">
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: d.assignee === me ? '#3b82f6' : '#cbd5e1' }} />
+                      {d.assignee}
+                    </span>
+
+                    {d.status === 'open' ? (
+                      <>
+                        <button
+                          onClick={() => startEdit(d)}
+                          style={{ background: '#f1f5f9', color: '#64748b', border: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', marginRight: '8px' }}
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={() => markDone(d.id)}
+                          style={{ background: '#2563eb', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                          完了する
+                        </button>
+                      </>
+                    ) : (
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => restore(d.id)}
+                          style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                          戻す
+                        </button>
+                        <button
+                          onClick={() => handleDelete(d.id)}
+                          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '8px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                          削除
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </>
+        )}
       </div>
+
+      {/* Edit Modal */}
+      {editingDeal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '400px', maxHeight: '80vh', overflowY: 'auto' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', marginBottom: '20px' }}>案件編集</h2>
+
+            <div className="form-group">
+              <label className="input-label">会社名/担当者</label>
+              <input className="input-field" value={editClientName} onChange={e => setEditClientName(e.target.value)} />
+            </div>
+
+            <div className="form-group">
+              <label className="input-label">内容</label>
+              <textarea className="input-field" rows={3} value={editMemo} onChange={e => setEditMemo(e.target.value)} />
+            </div>
+
+            <div className="form-group">
+              <label className="input-label">期限</label>
+              <input type="date" className="input-field" value={editDueDate} onChange={e => setEditDueDate(e.target.value)} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '20px' }}>
+              <div>
+                <label className="input-label">重要度</label>
+                <select className="input-field" value={editImportance} onChange={e => setEditImportance(e.target.value as Tri)}>
+                  <option>高</option><option>中</option><option>低</option>
+                </select>
+              </div>
+              <div>
+                <label className="input-label">急ぎ</label>
+                <select className="input-field" value={editUrgency} onChange={e => setEditUrgency(e.target.value as Tri)}>
+                  <option>高</option><option>中</option><option>低</option>
+                </select>
+              </div>
+              <div>
+                <label className="input-label">利益度</label>
+                <select className="input-field" value={editProfit} onChange={e => setEditProfit(e.target.value as Tri)}>
+                  <option>高</option><option>中</option><option>低</option>
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button onClick={cancelEdit} style={{ flex: 1, background: '#f1f5f9', color: '#64748b', border: 'none', padding: '14px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                キャンセル
+              </button>
+              <button onClick={saveEdit} style={{ flex: 1, background: '#2563eb', color: '#fff', border: 'none', padding: '14px', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Navigation */}
+      <nav className="bottom-nav">
+        <button className={`nav-item ${tab === 'list' ? 'active' : ''}`} onClick={() => setTab('list')}>
+          <span className="nav-icon">📋</span>
+          一覧
+        </button>
+        <button className={`nav-item ${tab === 'new' ? 'active' : ''}`} onClick={() => setTab('new')}>
+          <span className="nav-icon" style={{ color: '#2563eb', fontSize: '28px', transform: 'translateY(-2px)' }}>⊕</span>
+          <span style={{ color: '#2563eb', fontWeight: 'bold' }}>新規</span>
+        </button>
+        <button className={`nav-item ${tab === 'done' ? 'active' : ''}`} onClick={() => setTab('done')}>
+          <span className="nav-icon">✅</span>
+          完了
+        </button>
+      </nav>
     </div>
   );
 }

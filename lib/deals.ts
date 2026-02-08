@@ -17,6 +17,7 @@ export type Deal = {
   assignment_type: AssignmentType;
   assignee: string;
   status: 'open' | 'done';
+  image_url?: string; // 写真URL
 };
 
 // CREATE: 新規案件を作成

@@ -49,26 +49,23 @@ export async function POST(req: NextRequest) {
                 {
                     role: 'system',
                     content: `
-            あなたは秘書です。以下のテキストはユーザーが話した案件の内容です。
-            ここから以下の情報を抽出し、JSON形式で返してください。
-            推測できない項目は空文字またはデフォルト値を入れてください。
+            あなたは優秀な現場秘書です。以下のテキストは現場での会話や独り言の録音です。
+            ここから「議事録」を作成するつもりで、以下の情報を抽出しJSON形式で返してください。
 
             JSON構造:
             {
-              "clientName": "string (会社名や担当者名)",
-              "memo": "string (具体的な内容)",
-              "dueDate": "YYYY-MM-DD (今日の日付から推測)",
+              "clientName": "string (会社名や担当者名、プロジェクト名)",
+              "memo": "string (議事録の本文。決定事項や確認事項を箇条書きなどで整理)",
+              "dueDate": "YYYY-MM-DD (期限や次回予定があれば。なければ今日)",
               "importance": "高" | "中" | "低" (デフォルト: 中),
               "urgency": "高" | "中" | "低" (デフォルト: 中),
               "profit": "高" | "中" | "低" (デフォルト: 中),
               "assignmentType": "任せる" | "自分で" (デフォルト: 任せる),
-              "assignee": "string (誰に任せるか。名前があれば抽出)"
+              "assignee": "string (担当者名があれば)"
             }
             
             今日の日付は ${new Date().toISOString().split('T')[0]} です。
-            "明日"や"来週の水曜"などはこの日付を基準に計算してください。
-            "急ぎ"などのワードがあれば urgency を高にしてください。
-            "重要"などのワードがあれば importance を高にしてください。
+            本文(memo)は、ただの書き起こしではなく、要点をまとめた見やすい形式にしてください。
           `
                 },
                 { role: 'user', content: text }

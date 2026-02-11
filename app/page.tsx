@@ -147,15 +147,12 @@ export default function Page() {
       alert('最低1人のユーザーが必要です');
       return;
     }
-    if (user.name === me) {
-      alert('現在ログイン中のユーザーは削除できません');
-      return;
-    }
 
-    // Check if user has assigned tasks (any status in DB)
-    const userTasks = deals.filter(d => d.assignee === user.name);
+    // Check if user has assigned tasks in Supabase (open or done)
+    const allDeals = await getDeals();
+    const userTasks = allDeals.filter(d => d.assignee === user.name);
     if (userTasks.length > 0) {
-      alert(`「${user.name}」には${userTasks.length}件の担当タスクがDBに存在するため削除できません。\nすべてのタスクを削除してから再度お試しください。`);
+      alert(`「${user.name}」には${userTasks.length}件の案件があるため削除できません。\n案件をすべて削除してから再度お試しください。`);
       return;
     }
 
@@ -170,11 +167,15 @@ export default function Page() {
 
   // Handle delete user flow
   const handleDeleteUser = () => {
+    if (deleteMode) {
+      setDeleteMode(false);
+      return;
+    }
     if (users.length <= 1) {
       alert('最低1人のユーザーが必要です');
       return;
     }
-    setDeleteMode(!deleteMode);
+    setDeleteMode(true);
   };
 
   // Submit new deal

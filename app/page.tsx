@@ -622,7 +622,7 @@ export default function Page() {
 
             {/* Filters (Horizontal Scroll) */}
             <div style={{ overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '12px', marginBottom: '8px', display: 'flex', gap: '8px' }}>
-              {['全件', '自分担当', '任せる', '期限切れ'].map(f => (
+              {['全件', '自分担当', '期限切れ'].map(f => (
                 <button
                   key={f}
                   onClick={() => setFilter(f as typeof filter)}

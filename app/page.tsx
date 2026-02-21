@@ -64,6 +64,10 @@ export default function Page() {
   const [editProfit, setEditProfit] = useState<Tri>('中');
   const [editUrgency, setEditUrgency] = useState<Tri>('中');
 
+  // Notifications
+  const [showNotif, setShowNotif] = useState(false);
+  const [lastCheckedNotif, setLastCheckedNotif] = useState<string>('');
+
   // Voice Input
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
@@ -76,6 +80,8 @@ export default function Page() {
     if (verified === 'true') {
       setIsPinVerified(true);
     }
+    const saved = localStorage.getItem('matip_last_checked_notif');
+    if (saved) setLastCheckedNotif(saved);
   }, []);
 
   // Load users from Supabase
@@ -342,6 +348,23 @@ export default function Page() {
     setEditingDeal(null);
   };
 
+  // Notifications: deals assigned to me by others
+  const notifications = useMemo(() => {
+    return deals.filter(d => d.assignee === me && d.created_by !== me);
+  }, [deals, me]);
+
+  const unreadCount = useMemo(() => {
+    if (!lastCheckedNotif) return notifications.length;
+    return notifications.filter(d => d.created_at > lastCheckedNotif).length;
+  }, [notifications, lastCheckedNotif]);
+
+  const openNotif = () => {
+    setShowNotif(true);
+    const now = new Date().toISOString();
+    setLastCheckedNotif(now);
+    localStorage.setItem('matip_last_checked_notif', now);
+  };
+
   // Filter Logic
   const filtered = useMemo(() => {
     const now = todayYmd();
@@ -475,7 +498,13 @@ export default function Page() {
     <div className="wrap">
       {/* Header */}
       <header className="topbar">
-        <div className="brand">matip <span style={{ fontSize: '10px', opacity: 0.7 }}>v1.1</span></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="brand">matip <span style={{ fontSize: '10px', opacity: 0.7 }}>v1.1</span></div>
+          <button onClick={openNotif} className="notif-bell">
+            🔔
+            {unreadCount > 0 && <span className="notif-badge">{unreadCount}</span>}
+          </button>
+        </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <span className="user-badge" onClick={logout}>{me}</span>
         </div>
@@ -593,7 +622,7 @@ export default function Page() {
 
               {assignmentType === '任せる' && (
                 <select className="input-field" value={assignee} onChange={e => setAssignee(e.target.value)}>
-                  {users.map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                  {users.filter(u => u.name !== me).map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
                 </select>
               )}
             </div>
@@ -772,6 +801,35 @@ export default function Page() {
                 保存
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notification Drawer */}
+      {showNotif && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '20px' }}>
+          <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '400px', maxHeight: '80vh', overflowY: 'auto', marginTop: '40px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '700' }}>通知</h2>
+              <button onClick={() => setShowNotif(false)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#64748b' }}>×</button>
+            </div>
+            {notifications.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: '#94a3b8' }}>通知はありません</div>
+            ) : (
+              notifications.map(d => (
+                <div key={d.id} style={{ padding: '14px', background: '#f8fafc', borderRadius: '12px', marginBottom: '10px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: '13px', color: '#2563eb', fontWeight: '600', marginBottom: '6px' }}>
+                    {d.created_by} さんから依頼
+                  </div>
+                  <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>{d.client_name || '(相手不明)'}</div>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '6px' }}>{d.memo}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '12px', color: d.due_date < todayYmd() ? '#ef4444' : '#64748b' }}>期限: {fmtDate(d.due_date)}</span>
+                    <span className={`tag ${d.status === 'done' ? 'tag-lo' : 'tag-mid'}`} style={{ fontSize: '11px' }}>{d.status === 'done' ? '完了' : '対応中'}</span>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}

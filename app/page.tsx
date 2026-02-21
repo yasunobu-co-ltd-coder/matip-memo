@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Deal, Tri, AssignmentType, getDeals, createDeal, updateDeal, deleteDeal } from '../lib/deals';
 import { User, getUsers, addUser, deleteUser } from '../lib/users';
+import { getLastChecked, updateLastChecked } from '../lib/unread';
 
 const TRI_SCORE: Record<Tri, number> = { 高: 3, 中: 2, 低: 1 };
 
@@ -66,7 +67,7 @@ export default function Page() {
 
   // Notifications
   const [showNotif, setShowNotif] = useState(false);
-  const [lastCheckedNotif, setLastCheckedNotif] = useState<string>('');
+  const [lastCheckedNotif, setLastCheckedNotif] = useState<string | null>(null);
 
   // Voice Input
   const [isRecording, setIsRecording] = useState(false);
@@ -80,8 +81,6 @@ export default function Page() {
     if (verified === 'true') {
       setIsPinVerified(true);
     }
-    const saved = localStorage.getItem('matip_last_checked_notif');
-    if (saved) setLastCheckedNotif(saved);
   }, []);
 
   // Load users from Supabase
@@ -348,6 +347,12 @@ export default function Page() {
     setEditingDeal(null);
   };
 
+  // Load last_checked_at from DB when user logs in
+  useEffect(() => {
+    if (!me) return;
+    getLastChecked(me).then(val => setLastCheckedNotif(val));
+  }, [me]);
+
   // Notifications: deals assigned to me by others
   const notifications = useMemo(() => {
     return deals.filter(d => d.assignee === me && d.created_by !== me);
@@ -358,11 +363,10 @@ export default function Page() {
     return notifications.filter(d => d.created_at > lastCheckedNotif).length;
   }, [notifications, lastCheckedNotif]);
 
-  const openNotif = () => {
+  const openNotif = async () => {
     setShowNotif(true);
-    const now = new Date().toISOString();
-    setLastCheckedNotif(now);
-    localStorage.setItem('matip_last_checked_notif', now);
+    await updateLastChecked(me);
+    setLastCheckedNotif(new Date().toISOString());
   };
 
   // Filter Logic

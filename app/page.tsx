@@ -69,6 +69,12 @@ export default function Page() {
   const [showNotif, setShowNotif] = useState(false);
   const [lastCheckedNotif, setLastCheckedNotif] = useState<string | null>(null);
 
+  // Calendar
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calYear, setCalYear] = useState(new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(new Date().getMonth());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
   // Voice Input
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
@@ -508,6 +514,9 @@ export default function Page() {
             🔔
             {unreadCount > 0 && <span className="notif-badge">{unreadCount}</span>}
           </button>
+          <button onClick={() => { setShowCalendar(true); setSelectedDate(null); }} className="notif-bell">
+            📅
+          </button>
         </div>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
           <span className="user-badge" onClick={logout}>{me}</span>
@@ -837,6 +846,100 @@ export default function Page() {
           </div>
         </div>
       )}
+
+      {/* Calendar Modal */}
+      {showCalendar && (() => {
+        const today = todayYmd();
+        const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+        const firstDow = new Date(calYear, calMonth, 1).getDay();
+        const cells: (number | null)[] = [];
+        for (let i = 0; i < firstDow; i++) cells.push(null);
+        for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+
+        // Build a map of due_date -> deals (open only)
+        const dueDateMap: Record<string, Deal[]> = {};
+        deals.filter(d => d.status === 'open').forEach(d => {
+          if (!d.due_date) return;
+          if (!dueDateMap[d.due_date]) dueDateMap[d.due_date] = [];
+          dueDateMap[d.due_date].push(d);
+        });
+
+        const monthNames = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+        const dayNames = ['日','月','火','水','木','金','土'];
+
+        const selectedDeals = selectedDate ? (dueDateMap[selectedDate] || []) : [];
+
+        return (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '20px' }}>
+            <div style={{ background: '#fff', borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '400px', maxHeight: '85vh', overflowY: 'auto', marginTop: '20px' }}>
+              {/* Header */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <h2 style={{ fontSize: '18px', fontWeight: '700' }}>カレンダー</h2>
+                <button onClick={() => setShowCalendar(false)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: '#64748b' }}>×</button>
+              </div>
+
+              {/* Month Navigation */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <button onClick={() => { if (calMonth === 0) { setCalYear(calYear - 1); setCalMonth(11); } else { setCalMonth(calMonth - 1); } setSelectedDate(null); }} style={{ background: '#f1f5f9', border: 'none', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontWeight: '600' }}>◀</button>
+                <span style={{ fontWeight: '700', fontSize: '16px' }}>{calYear}年 {monthNames[calMonth]}</span>
+                <button onClick={() => { if (calMonth === 11) { setCalYear(calYear + 1); setCalMonth(0); } else { setCalMonth(calMonth + 1); } setSelectedDate(null); }} style={{ background: '#f1f5f9', border: 'none', borderRadius: '8px', padding: '6px 12px', cursor: 'pointer', fontWeight: '600' }}>▶</button>
+              </div>
+
+              {/* Day Headers */}
+              <div className="cal-grid">
+                {dayNames.map(dn => (
+                  <div key={dn} style={{ textAlign: 'center', fontSize: '11px', fontWeight: '700', color: dn === '日' ? '#ef4444' : dn === '土' ? '#3b82f6' : '#64748b', padding: '4px 0' }}>{dn}</div>
+                ))}
+              </div>
+
+              {/* Calendar Cells */}
+              <div className="cal-grid">
+                {cells.map((day, i) => {
+                  if (day === null) return <div key={`e${i}`} />;
+                  const ymd = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                  const hasDeals = dueDateMap[ymd];
+                  const isToday = ymd === today;
+                  const isSelected = ymd === selectedDate;
+                  const isOverdue = ymd < today && hasDeals;
+                  const dow = (firstDow + day - 1) % 7;
+
+                  return (
+                    <button
+                      key={day}
+                      onClick={() => setSelectedDate(isSelected ? null : ymd)}
+                      className={`cal-cell ${isToday ? 'cal-today' : ''} ${isSelected ? 'cal-selected' : ''}`}
+                      style={{ color: dow === 0 ? '#ef4444' : dow === 6 ? '#3b82f6' : undefined }}
+                    >
+                      {day}
+                      {hasDeals && (
+                        <span className="cal-dot" style={{ background: isOverdue ? '#ef4444' : '#3b82f6' }} />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Selected Date Deals */}
+              {selectedDate && (
+                <div style={{ marginTop: '16px', borderTop: '1px solid #e2e8f0', paddingTop: '12px' }}>
+                  <h3 style={{ fontSize: '14px', fontWeight: '700', marginBottom: '10px', color: '#334155' }}>{fmtDate(selectedDate)} の案件 ({selectedDeals.length}件)</h3>
+                  {selectedDeals.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px 0', color: '#94a3b8', fontSize: '13px' }}>案件はありません</div>
+                  ) : (
+                    selectedDeals.map(d => (
+                      <div key={d.id} style={{ padding: '10px', background: '#f8fafc', borderRadius: '10px', marginBottom: '8px', border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: '14px', fontWeight: '700', marginBottom: '2px' }}>{d.client_name || '(相手不明)'}</div>
+                        <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>{d.memo}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>担当: {d.assignee}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Bottom Navigation */}
       <nav className="bottom-nav">

@@ -85,6 +85,9 @@ export default function Page() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [calFilter, setCalFilter] = useState<'全件' | '自分担当'>('自分担当');
 
+  // 自分のUUID（フィルタ比較用）
+  const meId = useMemo(() => users.find(u => u.name === me)?.id || '', [users, me]);
+
   // Voice Input
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
@@ -141,7 +144,9 @@ export default function Page() {
   const handleLogin = (name: string) => {
     setMe(name);
     localStorage.setItem('matip_me', name);
-    setAssignee(name);
+    // assignee のデフォルトは「任せる」選択時に他ユーザーリストの先頭になる
+    const otherUser = users.find(u => u.name !== name);
+    setAssignee(otherUser?.id || '');
   };
 
   const logout = () => {
@@ -175,7 +180,7 @@ export default function Page() {
 
     // Check if user has assigned tasks in Supabase (open or done)
     const allDeals = await getDeals();
-    const userTasks = allDeals.filter(d => d.assignee === user.name);
+    const userTasks = allDeals.filter(d => d.assignee === user.id);
     if (userTasks.length > 0) {
       alert(`「${user.name}」には${userTasks.length}件の案件があるため削除できません。\n案件をすべて削除してから再度お試しください。`);
       return;
@@ -258,7 +263,6 @@ export default function Page() {
     const meUser = users.find(u => u.name === me);
     if (!meUser) return;
 
-    const assigneeUser = users.find(u => u.name === assignee);
     const newDeal = {
       created_by: meUser.id,
       client_name: clientName.trim(),
@@ -268,7 +272,7 @@ export default function Page() {
       profit,
       urgency,
       assignment_type: assignmentType,
-      assignee: assignmentType === '自分で' ? meUser.id : (assigneeUser?.id || meUser.id),
+      assignee: assignmentType === '自分で' ? meUser.id : (assignee || meUser.id),
       status: 'open',
     };
 
@@ -439,7 +443,7 @@ export default function Page() {
 
   // Notifications: deals assigned to me by others
   const notifications = useMemo(() => {
-    return deals.filter(d => d.assignee === me && d.created_by !== me);
+    return deals.filter(d => d.assignee === meId && d.created_by !== meId);
   }, [deals, me]);
 
   const unreadCount = useMemo(() => {
@@ -462,7 +466,7 @@ export default function Page() {
       list = list.filter(d => (d.client_name || '').includes(query) || (d.memo || '').includes(query));
     }
 
-    if (filter === '自分担当' && me) list = list.filter(d => d.assignee === me);
+    if (filter === '自分担当' && meId) list = list.filter(d => d.assignee === meId);
     if (filter === '任せる') list = list.filter(d => d.assignment_type === '任せる');
     if (filter === '自分で') list = list.filter(d => d.assignment_type === '自分で');
     if (filter === '期限切れ') list = list.filter(d => d.due_date < now);
@@ -755,7 +759,7 @@ export default function Page() {
 
               {assignmentType === '任せる' && (
                 <select className="input-field" value={assignee} onChange={e => setAssignee(e.target.value)}>
-                  {users.filter(u => u.name !== me).map(u => <option key={u.id} value={u.name}>{u.name}</option>)}
+                  {users.filter(u => u.name !== me).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               )}
             </div>
@@ -841,8 +845,8 @@ export default function Page() {
 
                   <div className="assignee-row">
                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: d.assignee === me ? '#3b82f6' : '#cbd5e1' }} />
-                      {d.assignee}
+                      <span style={{ width: 6, height: 6, borderRadius: '50%', background: d.assignee === meId ? '#3b82f6' : '#cbd5e1' }} />
+                      {d.assignee_user?.name ?? '(不明)'}
                     </span>
 
                     {d.status === 'open' ? (
@@ -952,7 +956,7 @@ export default function Page() {
               notifications.map(d => (
                 <div key={d.id} style={{ padding: '14px', background: '#f8fafc', borderRadius: '12px', marginBottom: '10px', border: '1px solid #e2e8f0' }}>
                   <div style={{ fontSize: '13px', color: '#2563eb', fontWeight: '600', marginBottom: '6px' }}>
-                    {d.created_by} さんから依頼
+                    {d.created_user?.name ?? '(不明)'} さんから依頼
                   </div>
                   <div style={{ fontSize: '15px', fontWeight: '700', marginBottom: '4px' }}>{d.client_name || '(相手不明)'}</div>
                   <div style={{ fontSize: '13px', color: '#64748b', marginBottom: '6px' }}>{d.memo}</div>
@@ -977,7 +981,7 @@ export default function Page() {
         for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
         // Build a map of due_date -> deals (open only, filtered)
-        const calDeals = deals.filter(d => d.status === 'open' && (calFilter === '全件' || d.assignee === me));
+        const calDeals = deals.filter(d => d.status === 'open' && (calFilter === '全件' || d.assignee === meId));
         const dueDateMap: Record<string, Deal[]> = {};
         calDeals.forEach(d => {
           if (!d.due_date) return;
@@ -1070,7 +1074,7 @@ export default function Page() {
                       <div key={d.id} style={{ padding: '10px', background: '#f8fafc', borderRadius: '10px', marginBottom: '8px', border: '1px solid #e2e8f0' }}>
                         <div style={{ fontSize: '14px', fontWeight: '700', marginBottom: '2px' }}>{d.client_name || '(相手不明)'}</div>
                         <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '4px' }}>{d.memo}</div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>担当: {d.assignee}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8' }}>担当: {d.assignee_user?.name ?? '(不明)'}</div>
                       </div>
                     ))
                   )}

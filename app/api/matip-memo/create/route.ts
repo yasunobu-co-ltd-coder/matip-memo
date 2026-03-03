@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
         assignee: assignee || created_by,
         status: status || 'open',
       }])
-      .select()
+      .select('*')
       .single();
 
     if (insertErr) {
@@ -56,19 +56,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: insertErr.message }, { status: 500 });
     }
 
-    // --- 2) 作成者の名前を取得（通知文用） ---
-    let userName = '誰か';
-    const { data: userRow } = await supabaseAdmin
-      .from('users')
-      .select('name')
-      .eq('id', created_by)
-      .single();
-    if (userRow?.name) {
-      userName = userRow.name;
-    }
+    // --- 2) 作成者・担当者の名前を取得 ---
+    const { data: createdUser } = await supabaseAdmin
+      .from('users').select('name').eq('id', created_by).single();
+    const { data: assigneeUserRow } = await supabaseAdmin
+      .from('users').select('name').eq('id', deal.assignee).single();
+
+    const createdName = createdUser?.name ?? '誰か';
+
+    // レスポンス用に JOIN 相当のフィールドを付与
+    const dealWithNames = {
+      ...deal,
+      created_user: createdUser ? { name: createdUser.name } : null,
+      assignee_user: assigneeUserRow ? { name: assigneeUserRow.name } : null,
+    };
 
     // --- 3) Push通知（await — Vercel serverless で確実に完了させる） ---
-    const title = `${userName}がメモ追加`;
+    const title = `${createdName}がメモ追加`;
     const notifBody = client_name
       ? `${client_name}: ${memo}`.slice(0, 180)
       : memo.slice(0, 180);
@@ -76,16 +80,15 @@ export async function POST(req: NextRequest) {
     try {
       await sendPushToAll(
         { title, body: notifBody, url: '/', memo_id: deal.id },
-        created_by,   // triggered_by_user_id
-        deal.id,      // memo_id
+        created_by,
+        deal.id,
       );
     } catch (err) {
-      // Push失敗でもメモ作成は成功扱い（ログは sendPushToAll 内で保存済み）
       console.error('[matip-memo/create] push error:', err);
     }
 
     // --- 4) 作成されたレコードを返却 ---
-    return NextResponse.json({ deal });
+    return NextResponse.json({ deal: dealWithNames });
   } catch (e) {
     console.error('[matip-memo/create] exception:', e);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

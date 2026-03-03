@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { Deal, Tri, AssignmentType, getDeals, createDeal, updateDeal, deleteDeal } from '../lib/deals';
+import { Deal, Tri, AssignmentType, getDeals, updateDeal, deleteDeal } from '../lib/deals';
 import { User, getUsers, addUser, deleteUser, updateUserOrder } from '../lib/users';
 import { getLastChecked, updateLastChecked } from '../lib/unread';
+import { PushNotificationUI } from './components/PushNotificationUI';
 
 const TRI_SCORE: Record<Tri, number> = { 高: 3, 中: 2, 低: 1 };
 
@@ -90,11 +91,15 @@ export default function Page() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
-  // Check PIN from sessionStorage on mount
+  // Check PIN from sessionStorage on mount + restore me from localStorage
   useEffect(() => {
     const verified = sessionStorage.getItem('matip_pin_verified');
     if (verified === 'true') {
       setIsPinVerified(true);
+    }
+    const savedMe = localStorage.getItem('matip_me');
+    if (savedMe) {
+      setMe(savedMe);
     }
   }, []);
 
@@ -247,11 +252,15 @@ export default function Page() {
     setIsDragging(false);
   };
 
-  // Submit new deal
+  // Submit new deal（サーバーAPI経由 → Push通知自動送信）
   const submit = async () => {
     if (!me) return;
+    const meUser = users.find(u => u.name === me);
+    if (!meUser) return;
+
+    const assigneeUser = users.find(u => u.name === assignee);
     const newDeal = {
-      created_by: me,
+      created_by: meUser.id,
       client_name: clientName.trim(),
       memo: memo.trim(),
       due_date: dueDate,
@@ -259,13 +268,24 @@ export default function Page() {
       profit,
       urgency,
       assignment_type: assignmentType,
-      assignee: assignmentType === '自分で' ? me : assignee,
-      status: 'open' as const,
+      assignee: assignmentType === '自分で' ? meUser.id : (assigneeUser?.id || meUser.id),
+      status: 'open',
     };
 
-    const created = await createDeal(newDeal);
-    if (created) {
-      setDeals([created, ...deals]);
+    try {
+      const res = await fetch('/api/matip-memo/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDeal),
+      });
+      const data = await res.json();
+      if (res.ok && data.deal) {
+        setDeals([data.deal, ...deals]);
+      } else {
+        console.error('Memo create failed:', data.error);
+      }
+    } catch (e) {
+      console.error('Memo create exception:', e);
     }
 
     // Reset & Nav
@@ -617,6 +637,11 @@ export default function Page() {
           <span className="user-badge" onClick={logout}>{me}</span>
         </div>
       </header>
+
+      {/* Push通知設定 */}
+      <div style={{ padding: '0 16px' }}>
+        <PushNotificationUI userId={users.find(u => u.name === me)?.id || ''} />
+      </div>
 
       {/* Content Area */}
       <div className="content">

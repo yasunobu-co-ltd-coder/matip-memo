@@ -71,7 +71,7 @@ export async function DELETE(req: NextRequest) {
 
     const { error } = await supabaseAdmin
       .from('push_subscriptions')
-      .update({ enabled: false })
+      .delete()
       .eq('endpoint', endpoint);
 
     if (error) {

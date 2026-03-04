@@ -35,6 +35,7 @@ export default function Page() {
   const [me, setMe] = useState<string>('');
   const [users, setUsers] = useState<User[]>([]);
   const [deleteMode, setDeleteMode] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [newUserName, setNewUserName] = useState('');
 
   // Delete confirmation modal
@@ -282,9 +283,11 @@ export default function Page() {
 
   // Submit new deal（サーバーAPI経由 → Push通知自動送信）
   const submit = async () => {
-    if (!me) return;
+    if (!me || submitting) return;
     const meUser = users.find(u => u.name === me);
     if (!meUser) return;
+
+    setSubmitting(true);
 
     const newDeal = {
       created_by: meUser.id,
@@ -321,6 +324,9 @@ export default function Page() {
     setDueDate(todayYmd());
     setImportance('中');
     setTab('list');
+
+    // 5秒間連打防止
+    setTimeout(() => setSubmitting(false), 5000);
   };
 
   // Mark as done
@@ -870,8 +876,8 @@ export default function Page() {
               )}
             </div>
 
-            <button className="primary-btn" onClick={submit} disabled={!memo.trim()}>
-              登録する
+            <button className="primary-btn" onClick={submit} disabled={!memo.trim() || submitting}>
+              {submitting ? '読み込み中...' : '登録する'}
             </button>
             <div style={{ height: '40px' }} />
           </div>

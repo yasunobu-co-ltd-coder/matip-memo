@@ -341,7 +341,7 @@ export default function Page() {
 
   // Delete deal permanently
   const handleDelete = async (id: string) => {
-    if (!confirm('この案件を完全に削除しますか？')) return;
+    if (!confirm('このメモをデータベースから完全に削除します。\nこの操作は取り消せません。\n\n本当に削除しますか？')) return;
     const success = await deleteDeal(id);
     if (success) {
       setDeals(deals.filter(d => d.id !== id));

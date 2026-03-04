@@ -737,7 +737,7 @@ export default function Page() {
           <div className="brand">matip <span style={{ fontSize: '10px', opacity: 0.7 }}>v1.1</span></div>
           <button onClick={openNotif} className="notif-bell">
             🔔
-            {notifications.length > 0 && <span className="notif-badge">{notifications.length}</span>}
+            {unreadCount > 0 && <span className="notif-badge">{unreadCount}</span>}
           </button>
           <button onClick={() => { setShowCalendar(true); setSelectedDate(null); }} className="notif-bell">
             📅

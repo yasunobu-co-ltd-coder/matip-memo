@@ -37,6 +37,12 @@ export default function Page() {
   const [deleteMode, setDeleteMode] = useState(false);
   const [newUserName, setNewUserName] = useState('');
 
+  // Delete confirmation modal
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [deleteRefs, setDeleteRefs] = useState<{ counts: Record<string, number>; canDelete: boolean } | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   // Drag & Drop
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -177,22 +183,39 @@ export default function Page() {
       alert('最低1人のユーザーが必要です');
       return;
     }
-
-    // Check if user has assigned tasks in Supabase (open or done)
-    const allDeals = await getDeals();
-    const userTasks = allDeals.filter(d => d.assignee === user.id);
-    if (userTasks.length > 0) {
-      alert(`「${user.name}」には${userTasks.length}件の案件があるため削除できません。\n案件をすべて削除してから再度お試しください。`);
-      return;
+    // モーダルを開いて参照件数を取得
+    setDeleteTarget(user);
+    setDeleteRefs(null);
+    setDeleteError(null);
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(`/api/users/${user.id}/refs`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setDeleteRefs({ counts: data.counts, canDelete: data.canDelete });
+    } catch (e: unknown) {
+      setDeleteError(e instanceof Error ? e.message : '参照件数の取得に失敗しました');
+    } finally {
+      setDeleteLoading(false);
     }
+  };
 
-    if (!confirm(`「${user.name}」を削除しますか？`)) return;
-    const ok = await deleteUser(user.id);
+  const confirmDeleteUser = async () => {
+    if (!deleteTarget) return;
+    const ok = await deleteUser(deleteTarget.id);
     if (ok) {
-      setUsers(users.filter(u => u.id !== user.id));
+      setUsers(users.filter(u => u.id !== deleteTarget.id));
     } else {
       alert('ユーザーの削除に失敗しました');
     }
+    setDeleteTarget(null);
+    setDeleteRefs(null);
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteTarget(null);
+    setDeleteRefs(null);
+    setDeleteError(null);
   };
 
   // Handle delete user flow
@@ -609,6 +632,89 @@ export default function Page() {
             </button>
           </div>
         </div>
+
+        {/* 削除確認モーダル */}
+        {deleteTarget && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000, padding: '16px',
+          }} onClick={closeDeleteModal}>
+            <div
+              className="glass-panel"
+              style={{ maxWidth: '400px', width: '100%', padding: '24px', borderRadius: '16px' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 style={{ margin: '0 0 16px', color: '#1e293b' }}>
+                「{deleteTarget.name}」の参照状況
+              </h3>
+
+              {deleteLoading && (
+                <p style={{ color: '#64748b', textAlign: 'center' }}>読み込み中...</p>
+              )}
+
+              {deleteError && (
+                <p style={{ color: '#ef4444' }}>エラー: {deleteError}</p>
+              )}
+
+              {deleteRefs && (
+                <>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px', fontSize: '14px' }}>
+                    <tbody>
+                      {[
+                        ['案件（ポケット）', deleteRefs.counts.pocket_matip],
+                        ['メモ（作成）', deleteRefs.counts.memo_created],
+                        ['メモ（担当）', deleteRefs.counts.memo_assigned],
+                        ['未読', deleteRefs.counts.memo_unread],
+                        ['通知購読', deleteRefs.counts.push_subs],
+                        ['通知ログ', deleteRefs.counts.notif_triggered],
+                      ].map(([label, count]) => (
+                        <tr key={label as string} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '8px 4px', color: '#475569' }}>{label}</td>
+                          <td style={{
+                            padding: '8px 4px', textAlign: 'right', fontWeight: 'bold',
+                            color: (count as number) > 0 ? '#ef4444' : '#22c55e',
+                          }}>
+                            {count}件
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {deleteRefs.canDelete ? (
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={closeDeleteModal}
+                        style={{ flex: 1, padding: '12px', background: '#64748b', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+                      >
+                        キャンセル
+                      </button>
+                      <button
+                        onClick={confirmDeleteUser}
+                        style={{ flex: 1, padding: '12px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+                      >
+                        削除する
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <p style={{ color: '#ef4444', fontWeight: 'bold', fontSize: '14px', margin: '0 0 12px' }}>
+                        関連データが残っているため削除できません
+                      </p>
+                      <button
+                        onClick={closeDeleteModal}
+                        style={{ width: '100%', padding: '12px', background: '#64748b', color: '#fff', border: 'none', borderRadius: '12px', fontWeight: '600', cursor: 'pointer' }}
+                      >
+                        閉じる
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

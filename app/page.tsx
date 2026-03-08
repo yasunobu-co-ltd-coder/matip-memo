@@ -466,9 +466,9 @@ export default function Page() {
 
   // Load last_checked_at from DB when user logs in
   useEffect(() => {
-    if (!me) return;
-    getLastChecked(me).then(val => setLastCheckedNotif(val));
-  }, [me]);
+    if (!meId) return;
+    getLastChecked(meId).then(val => setLastCheckedNotif(val));
+  }, [meId]);
 
   // Notifications: deals assigned to me by others
   const notifications = useMemo(() => {
@@ -482,7 +482,7 @@ export default function Page() {
 
   const openNotif = async () => {
     setShowNotif(true);
-    await updateLastChecked(me);
+    await updateLastChecked(meId);
     setLastCheckedNotif(new Date().toISOString());
   };
 

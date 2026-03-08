@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { after } from 'next/server';
 import { supabaseAdmin } from '../../../../lib/supabase-server';
 import { sendPushToAll } from '../../../../lib/push';
 
@@ -72,23 +73,25 @@ export async function POST(req: NextRequest) {
       assignee_user: assigneeName ? { name: assigneeName } : null,
     };
 
-    // --- 3) Push通知（await — Vercel serverless で確実に完了させる） ---
+    // --- 3) Push通知（after() でレスポンス返却後にバックグラウンド実行） ---
     const title = `${createdName}がメモ追加`;
     const notifBody = client_name
       ? `${client_name}: ${memo}`.slice(0, 180)
       : memo.slice(0, 180);
 
-    try {
-      await sendPushToAll(
-        { title, body: notifBody, url: '/', memo_id: deal.id },
-        created_by,
-        deal.id,
-      );
-    } catch (err) {
-      console.error('[matip-memo/create] push error:', err);
-    }
+    after(async () => {
+      try {
+        await sendPushToAll(
+          { title, body: notifBody, url: '/', memo_id: deal.id },
+          created_by,
+          deal.id,
+        );
+      } catch (err) {
+        console.error('[matip-memo/create] push error:', err);
+      }
+    });
 
-    // --- 4) 作成されたレコードを返却 ---
+    // --- 4) 作成されたレコードを返却（Push完了を待たず即レスポンス） ---
     return NextResponse.json({ deal: dealWithNames });
   } catch (e) {
     console.error('[matip-memo/create] exception:', e);

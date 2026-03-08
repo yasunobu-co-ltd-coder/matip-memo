@@ -45,7 +45,7 @@ export async function getUserReferenceCounts(userId: string): Promise<{
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId),
     supabaseAdmin
-      .from('notification_logs')
+      .from('notification_log')
       .select('*', { count: 'exact', head: true })
       .eq('triggered_by_user_id', userId),
   ]);

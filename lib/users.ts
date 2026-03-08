@@ -12,7 +12,7 @@ export async function getUsers(): Promise<User[]> {
   try {
     const { data, error } = await supabase
       .from('users')
-      .select('*')
+      .select('id, name, created_at, sort_order')
       .order('sort_order', { ascending: true });
 
     if (error) {

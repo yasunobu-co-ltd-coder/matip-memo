@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
         assignee: assignee || created_by,
         status: status || 'open',
       }])
-      .select('*')
+      .select('id, created_at, created_by, client_name, memo, due_date, importance, profit, urgency, assignment_type, assignee, status')
       .single();
 
     if (insertErr) {
@@ -56,19 +56,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: insertErr.message }, { status: 500 });
     }
 
-    // --- 2) 作成者・担当者の名前を取得 ---
-    const { data: createdUser } = await supabaseAdmin
-      .from('users').select('name').eq('id', created_by).single();
-    const { data: assigneeUserRow } = await supabaseAdmin
-      .from('users').select('name').eq('id', deal.assignee).single();
+    // --- 2) 作成者・担当者の名前を一括取得 ---
+    const userIds = [...new Set([created_by, deal.assignee])];
+    const { data: userRows } = await supabaseAdmin
+      .from('users').select('id, name').in('id', userIds);
+    const userMap = new Map((userRows || []).map((u: { id: string; name: string }) => [u.id, u.name]));
 
-    const createdName = createdUser?.name ?? '誰か';
+    const createdName = userMap.get(created_by) ?? '誰か';
+    const assigneeName = userMap.get(deal.assignee) ?? null;
 
     // レスポンス用に JOIN 相当のフィールドを付与
     const dealWithNames = {
       ...deal,
-      created_user: createdUser ? { name: createdUser.name } : null,
-      assignee_user: assigneeUserRow ? { name: assigneeUserRow.name } : null,
+      created_user: userMap.has(created_by) ? { name: createdName } : null,
+      assignee_user: assigneeName ? { name: assigneeName } : null,
     };
 
     // --- 3) Push通知（await — Vercel serverless で確実に完了させる） ---

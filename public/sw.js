@@ -27,6 +27,9 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+    // GETリクエスト以外はスキップ（POST等をキャッシュしようとするとエラーになる）
+    if (event.request.method !== 'GET') return;
+
     // Network first strategy for API calls
     if (event.request.url.includes('supabase.co')) {
         event.respondWith(fetch(event.request));

@@ -5,6 +5,7 @@ import { Deal, Tri, AssignmentType, getDeals, updateDeal, deleteDeal } from '../
 import { User, getUsers, addUser, deleteUser, updateUserOrder } from '../lib/users';
 import { getLastChecked, updateLastChecked } from '../lib/unread';
 import { PushNotificationUI } from './components/PushNotificationUI';
+import { supabase } from '../lib/supabase';
 
 const TRI_SCORE: Record<Tri, number> = { 高: 3, 中: 2, 低: 1 };
 
@@ -101,8 +102,12 @@ export default function Page() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
-  // Check PIN from sessionStorage on mount + restore me from localStorage
+  // Check PIN from sessionStorage on mount + restore me from localStorage + prewarm Supabase
   useEffect(() => {
+    // Supabase接続プリウォーム（PIN入力中にTLS接続を確立）
+    supabase.from('users').select('id').limit(1).then(() => {
+      console.log('[perf] supabase connection warmed');
+    });
     const verified = sessionStorage.getItem('matip_pin_verified');
     if (verified === 'true') {
       setIsPinVerified(true);
@@ -119,22 +124,19 @@ export default function Page() {
     setUsers(data);
   }, []);
 
-  useEffect(() => {
-    if (isPinVerified) loadUsers();
-  }, [isPinVerified, loadUsers]);
-
   // Load deals from Supabase
   const loadDeals = useCallback(async () => {
-    if (!isPinVerified || !me) return;
     setLoading(true);
     const data = await getDeals();
     setDeals(data);
     setLoading(false);
-  }, [isPinVerified, me]);
+  }, []);
 
+  // 初期ロード並列化（users + deals を同時取得）
   useEffect(() => {
-    loadDeals();
-  }, [loadDeals]);
+    if (!isPinVerified) return;
+    Promise.all([loadUsers(), loadDeals()]);
+  }, [isPinVerified, loadUsers, loadDeals]);
 
   // PIN verification handler
   const handlePinSubmit = () => {

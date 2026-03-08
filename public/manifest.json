@@ -1,6 +1,6 @@
 {
-  "name": "matip",
-  "short_name": "matip",
+  "name": "matip-memo",
+  "short_name": "matip-memo",
   "description": "案件管理アプリ",
   "start_url": "/",
   "display": "standalone",

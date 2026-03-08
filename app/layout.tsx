@@ -14,13 +14,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "matip",
+  title: "matip-memo",
   description: "案件管理アプリ",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "matip",
+    title: "matip-memo",
   },
   icons: {
     icon: [

@@ -7,10 +7,10 @@ export async function getLastChecked(userName: string): Promise<string | null> {
       .from('matip-memo-unread')
       .select('last_checked_at')
       .eq('user_name', userName)
-      .maybeSingle();
+      .limit(1);
 
-    if (error || !data) return null;
-    return data.last_checked_at;
+    if (error || !data || data.length === 0) return null;
+    return data[0].last_checked_at;
   } catch (e) {
     console.error('Exception getting last_checked:', e);
     return null;

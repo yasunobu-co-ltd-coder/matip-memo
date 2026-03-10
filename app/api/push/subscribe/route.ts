@@ -13,19 +13,8 @@ export async function POST(req: NextRequest) {
     const { subscription, user_id } = body;
 
     if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth || !user_id) {
-      console.error('[subscribe] missing fields:', {
-        hasEndpoint: !!subscription?.endpoint,
-        hasP256dh: !!subscription?.keys?.p256dh,
-        hasAuth: !!subscription?.keys?.auth,
-        hasUserId: !!user_id,
-      });
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
-
-    console.log('[subscribe] upsert:', {
-      user_id,
-      endpoint: subscription.endpoint.slice(0, 60) + '…',
-    });
 
     const { data, error } = await supabaseAdmin
       .from('push_subscriptions')
@@ -44,11 +33,10 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
-      console.error('[subscribe] upsert error:', error.message, error.details, error.hint);
+      console.error('[subscribe] upsert error:', error.message);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log('[subscribe] success:', { id: data.id, enabled: data.enabled });
     return NextResponse.json({ success: true, id: data.id });
   } catch (e) {
     console.error('[subscribe] exception:', e);
@@ -58,7 +46,7 @@ export async function POST(req: NextRequest) {
 
 /**
  * DELETE /api/push/subscribe
- * Push購読を無効化（enabled=false）
+ * Push購読を無効化
  */
 export async function DELETE(req: NextRequest) {
   try {

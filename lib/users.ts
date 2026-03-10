@@ -3,17 +3,19 @@ import { supabase } from './supabase';
 export type User = {
   id: string;
   name: string;
-  created_at: string;
   sort_order: number;
 };
 
 // ユーザー一覧を取得
 export async function getUsers(): Promise<User[]> {
   try {
+    const t0 = performance.now();
     const { data, error } = await supabase
       .from('users')
-      .select('id, name, created_at, sort_order')
+      .select('id, name, sort_order')
       .order('sort_order', { ascending: true });
+
+    console.log(`[perf] getUsers: ${(performance.now() - t0).toFixed(0)}ms, rows=${data?.length ?? 0}`);
 
     if (error) {
       console.error('Error fetching users:', error.message);

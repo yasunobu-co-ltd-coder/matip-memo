@@ -132,10 +132,13 @@ export default function Page() {
     setLoading(false);
   }, []);
 
-  // 初期ロード並列化（users + deals を同時取得）
+  // PIN認証後にusers + dealsを並列取得（最大ボトルネック解消）
   useEffect(() => {
     if (!isPinVerified) return;
-    Promise.all([loadUsers(), loadDeals()]);
+    const t0 = performance.now();
+    Promise.all([loadUsers(), loadDeals()]).then(() => {
+      console.log(`[perf] initial load: ${(performance.now() - t0).toFixed(0)}ms`);
+    });
   }, [isPinVerified, loadUsers, loadDeals]);
 
   // PIN verification handler
@@ -475,7 +478,7 @@ export default function Page() {
   // Notifications: deals assigned to me by others
   const notifications = useMemo(() => {
     return deals.filter(d => d.assignee === meId && d.created_by !== meId);
-  }, [deals, me]);
+  }, [deals, meId]);
 
   const unreadCount = useMemo(() => {
     if (!lastCheckedNotif) return notifications.length;

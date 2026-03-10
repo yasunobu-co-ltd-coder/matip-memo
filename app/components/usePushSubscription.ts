@@ -43,7 +43,6 @@ export function usePushSubscription(userId: string) {
       setPermission(Notification.permission as PushPermissionState);
     }
 
-    // ブラウザ側の購読状態チェック
     navigator.serviceWorker.ready.then((registration) => {
       registration.pushManager.getSubscription().then((sub) => {
         setIsSubscribed(!!sub);
@@ -58,9 +57,8 @@ export function usePushSubscription(userId: string) {
 
     navigator.serviceWorker.ready.then(async (registration) => {
       const existing = await registration.pushManager.getSubscription();
-      if (!existing) return; // ブラウザ購読がなければ何もしない
+      if (!existing) return;
 
-      // DB に upsert（endpointが既にあれば enabled=true に戻すだけ）
       try {
         await fetch('/api/push/subscribe', {
           method: 'POST',
@@ -102,7 +100,6 @@ export function usePushSubscription(userId: string) {
       });
 
       const subJson = subscription.toJSON();
-      console.log('[usePush] subscribing:', { userId, endpoint: subJson.endpoint?.slice(0, 60) });
 
       const response = await fetch('/api/push/subscribe', {
         method: 'POST',
@@ -114,8 +111,6 @@ export function usePushSubscription(userId: string) {
       });
 
       if (response.ok) {
-        const result = await response.json();
-        console.log('[usePush] subscribed:', result);
         setIsSubscribed(true);
         setIsLoading(false);
         return true;

@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     const {
-      created_by,      // UUID (users.id)
+      created_by,
       client_name,
       memo,
       due_date,
@@ -26,7 +26,6 @@ export async function POST(req: NextRequest) {
       status,
     } = body;
 
-    // --- バリデーション ---
     if (!created_by || !memo) {
       return NextResponse.json(
         { error: 'created_by (UUID) and memo are required' },
@@ -34,7 +33,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // --- 1) matip-memo INSERT ---
+    // 1) matip-memo INSERT
     const { data: deal, error: insertErr } = await supabaseAdmin
       .from('matip-memo')
       .insert([{
@@ -49,7 +48,7 @@ export async function POST(req: NextRequest) {
         assignee: assignee || created_by,
         status: status || 'open',
       }])
-      .select('id, created_at, created_by, client_name, memo, due_date, importance, profit, urgency, assignment_type, assignee, status')
+      .select('*')
       .single();
 
     if (insertErr) {
@@ -57,41 +56,44 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: insertErr.message }, { status: 500 });
     }
 
-    // --- 2) 作成者・担当者の名前を一括取得 ---
+    // 2) 作成者・担当者の名前を一括取得
     const userIds = [...new Set([created_by, deal.assignee])];
     const { data: userRows } = await supabaseAdmin
       .from('users').select('id, name').in('id', userIds);
-    const userMap = new Map((userRows || []).map((u: { id: string; name: string }) => [u.id, u.name]));
 
+    const userMap = new Map((userRows ?? []).map((u: { id: string; name: string }) => [u.id, u.name]));
     const createdName = userMap.get(created_by) ?? '誰か';
-    const assigneeName = userMap.get(deal.assignee) ?? null;
+    const createdUser = userMap.has(created_by) ? { name: userMap.get(created_by)! } : null;
+    const assigneeUserRow = userMap.has(deal.assignee) ? { name: userMap.get(deal.assignee)! } : null;
 
-    // レスポンス用に JOIN 相当のフィールドを付与
     const dealWithNames = {
       ...deal,
-      created_user: userMap.has(created_by) ? { name: createdName } : null,
-      assignee_user: assigneeName ? { name: assigneeName } : null,
+      created_user: createdUser ? { name: createdUser.name } : null,
+      assignee_user: assigneeUserRow ? { name: assigneeUserRow.name } : null,
     };
 
-    // --- 3) Push通知（after() でレスポンス返却後にバックグラウンド実行） ---
+    // 3) Push通知（after() でレスポンス返却後にサーバーレス関数内で実行）
     const title = `${createdName}がメモ追加`;
     const notifBody = client_name
       ? `${client_name}: ${memo}`.slice(0, 180)
       : memo.slice(0, 180);
 
     after(async () => {
+      const t0 = Date.now();
       try {
-        await sendPushToAll(
+        const result = await sendPushToAll(
           { title, body: notifBody, url: '/', memo_id: deal.id },
           created_by,
           deal.id,
         );
+        console.log(
+          `[push] done in ${Date.now() - t0}ms — sent=${result.sent_to_count} ok=${result.success_count} fail=${result.failure_count}`,
+        );
       } catch (err) {
-        console.error('[matip-memo/create] push error:', err);
+        console.error(`[push] failed after ${Date.now() - t0}ms:`, err);
       }
     });
 
-    // --- 4) 作成されたレコードを返却（Push完了を待たず即レスポンス） ---
     return NextResponse.json({ deal: dealWithNames });
   } catch (e) {
     console.error('[matip-memo/create] exception:', e);

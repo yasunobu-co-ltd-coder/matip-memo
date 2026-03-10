@@ -3,14 +3,17 @@ import { supabase } from './supabase';
 // 通知の最終確認時刻を取得
 export async function getLastChecked(userId: string): Promise<string | null> {
   try {
+    const t0 = performance.now();
     const { data, error } = await supabase
       .from('matip-memo-unread')
       .select('last_checked_at')
       .eq('user_id', userId)
-      .limit(1);
+      .maybeSingle();
 
-    if (error || !data || data.length === 0) return null;
-    return data[0].last_checked_at;
+    console.log(`[perf] getLastChecked: ${(performance.now() - t0).toFixed(0)}ms`);
+
+    if (error || !data) return null;
+    return data.last_checked_at;
   } catch (e) {
     console.error('Exception getting last_checked:', e);
     return null;

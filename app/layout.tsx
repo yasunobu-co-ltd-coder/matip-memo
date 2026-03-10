@@ -22,8 +22,16 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "matip-memo",
   },
+  openGraph: {
+    title: "matip-memo",
+    description: "案件管理アプリ",
+    siteName: "matip-memo",
+    images: [{ url: "/icon-512.png", width: 512, height: 512, type: "image/png" }],
+    type: "website",
+  },
   icons: {
     icon: [
+      { url: "/favicon.ico", sizes: "48x48" },
       { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
     ],

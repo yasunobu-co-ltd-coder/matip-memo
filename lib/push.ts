@@ -22,12 +22,15 @@ export interface PushPayload {
   memo_id?: string;
 }
 
+export type NotifyMode = 'all' | 'mine';
+
 interface SubscriptionRow {
   id: string;
   user_id: string;
   endpoint: string;
   p256dh: string;
   auth: string;
+  notify_mode: NotifyMode;
 }
 
 interface SendError {
@@ -51,11 +54,12 @@ export async function sendPushToAll(
   payload: PushPayload,
   triggeredByUserId: string,
   memoId: string,
+  assigneeUserId?: string,
 ): Promise<SendResult> {
   // 1) 有効購読を取得
   const { data: rows, error: fetchErr } = await supabaseAdmin
     .from('push_subscriptions')
-    .select('id, user_id, endpoint, p256dh, auth')
+    .select('id, user_id, endpoint, p256dh, auth, notify_mode')
     .eq('enabled', true);
 
   if (fetchErr) {
@@ -66,7 +70,16 @@ export async function sendPushToAll(
     return { sent_to_count: 0, success_count: 0, failure_count: 0 };
   }
 
-  const subs = (rows ?? []) as SubscriptionRow[];
+  const allSubs = (rows ?? []) as SubscriptionRow[];
+  // notify_mode='mine' のユーザーは、自分が依頼人 or 担当者の場合のみ通知
+  const relatedUserIds = new Set([triggeredByUserId, ...(assigneeUserId ? [assigneeUserId] : [])]);
+  const subs = allSubs.filter((sub) => {
+    const mode = sub.notify_mode || 'all';
+    if (mode === 'mine') {
+      return relatedUserIds.has(sub.user_id);
+    }
+    return true; // 'all'
+  });
   if (subs.length === 0) {
     await insertLog(memoId, triggeredByUserId, 0, 0, 0, []);
     return { sent_to_count: 0, success_count: 0, failure_count: 0 };

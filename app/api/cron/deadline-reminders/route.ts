@@ -43,13 +43,13 @@ export async function GET(req: NextRequest) {
     const { data: tomorrowDeals } = await supabaseAdmin
       .from('matip-memo')
       .select('id, client_name, memo, due_date, assignee, assignee_user:users!assignee(name)')
-      .eq('status', 'open')
+      .in('status', ['open', '未着手', '対応中'])
       .eq('due_date', tomorrow);
 
     if (tomorrowDeals && tomorrowDeals.length > 0) {
       results.tomorrow_count = tomorrowDeals.length;
       for (const deal of tomorrowDeals) {
-        const assigneeName = (deal.assignee_user as { name: string } | null)?.name ?? '';
+        const assigneeName = (deal.assignee_user as unknown as { name: string }[] | null)?.[0]?.name ?? '';
         const title = '明日が期限です';
         const body = `${deal.client_name || '(相手不明)'}: ${(deal.memo || '').slice(0, 100)}`;
         const r = await sendPushToUser(deal.assignee, { title, body, url: '/' });
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
     const { data: overdueDeals } = await supabaseAdmin
       .from('matip-memo')
       .select('id, client_name, memo, due_date, assignee, assignee_user:users!assignee(name)')
-      .eq('status', 'open')
+      .in('status', ['open', '未着手', '対応中'])
       .eq('due_date', yesterday);
 
     if (overdueDeals && overdueDeals.length > 0) {

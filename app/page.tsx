@@ -9,7 +9,7 @@ import UpdateNotice from './components/UpdateNotice';
 import { PullToRefresh } from './components/PullToRefresh';
 import { supabase } from '../lib/supabase';
 import { markAsRead, getReadsForMemos } from '../lib/reads';
-import { HelpCircle, LogOut, BookMarked, Bell, CalendarDays } from 'lucide-react';
+import { HelpCircle, LogOut, BookMarked, Bell, CalendarDays, FileText } from 'lucide-react';
 
 const APP_VERSION = 'v1.0.0';
 const COMMIT_SHA = process.env.NEXT_PUBLIC_COMMIT_SHA || 'dev';
@@ -896,7 +896,7 @@ export default function Page() {
     <div className="wrap">
       {/* Header */}
       <header className="topbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <div className="brand">memo <span style={{ fontSize: '10px', opacity: 0.7 }}>v1.1</span></div>
           <button onClick={openNotif} className="notif-bell">
             <Bell className="w-5 h-5" />
@@ -907,6 +907,7 @@ export default function Page() {
           </button>
         </div>
         <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <a href="/matip-memo_取扱説明書.pdf" target="_blank" rel="noopener noreferrer" style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}><FileText className="w-5 h-5" /></a>
           <button onClick={() => setShowRulebook(true)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}><BookMarked className="w-5 h-5" /></button>
           <button onClick={() => setShowHelp(true)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px' }}><HelpCircle className="w-5 h-5" /></button>
           <span className="user-badge">{me}</span>
